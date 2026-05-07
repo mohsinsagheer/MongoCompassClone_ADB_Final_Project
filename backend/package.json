@@ -1,0 +1,19 @@
+{
+  "name": "shipwreck-analysis-system",
+  "version": "1.0.0",
+  "description": "Distributed Geospatial Shipwreck Analysis System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.1",
+    "mongodb": "^6.21.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

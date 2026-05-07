@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distributed Geospatial Shipwreck Analysis System</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ═══ CONNECTION MODAL ═══ -->
+  <div id="connectionModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-icon-wrap">
+          <i class="fas fa-anchor"></i>
+        </div>
+        <h1>MOHSIN SAGHEER</h1>
+        <p class="modal-subtitle">Distributed Database Analysis Platform</p>
+      </div>
+      <div class="modal-body">
+        <label for="connStr">MongoDB Connection String</label>
+        <input type="text" id="connStr" placeholder="mongodb://localhost:27017/shipwrecks" spellcheck="false" autocomplete="off">
+        <p class="input-hint">Use same string as in MongoDB Compass</p>
+        <div id="connError" class="error-msg"></div>
+        <button id="connectBtn" class="btn-primary btn-lg">
+          <i class="fas fa-plug"></i> Connect to Database
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN APPLICATION ═══ -->
+  <div id="app" class="app hidden">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-brand">
+        <i class="fas fa-anchor brand-icon"></i>
+        <span class="brand-text">MOHSIN SAGHEER</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-section="dashboard">
+          <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-section="crud">
+          <i class="fas fa-database"></i><span>CRUD Operations</span>
+        </a>
+        <a href="#" class="nav-item" data-section="aggregation">
+          <i class="fas fa-layer-group"></i><span>Aggregation</span>
+        </a>
+        <a href="#" class="nav-item" data-section="geospatial">
+          <i class="fas fa-earth-americas"></i><span>Geospatial</span>
+        </a>
+        <a href="#" class="nav-item" data-section="optimization">
+          <i class="fas fa-gauge-high"></i><span>Optimization</span>
+        </a>
+        <a href="#" class="nav-item" data-section="advanced">
+          <i class="fas fa-atom"></i><span>Advanced</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="conn-status" id="connStatus">
+          <span class="status-dot"></span>
+          <span id="dbLabel">Not connected</span>
+        </div>
+        <button id="disconnectBtn" class="btn-ghost btn-sm">
+          <i class="fas fa-power-off"></i> Disconnect
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="mainContent">
+
+      <!-- ─── DASHBOARD ─── -->
+      <section id="sec-dashboard" class="content-section active">
+        <div class="section-header">
+          <h2>Dashboard</h2>
+          <button class="btn-ghost btn-sm" onclick="loadDashboard()"><i class="fas fa-refresh"></i> Refresh</button>
+        </div>
+        <div class="stats-grid" id="dashStats"></div>
+        <div class="card">
+          <h3>Collection Overview</h3>
+          <div class="table-wrap" id="dashTable"></div>
+        </div>
+      </section>
+
+      <!-- ─── CRUD OPERATIONS ─── -->
+      <section id="sec-crud" class="content-section">
+        <div class="section-header">
+          <h2>CRUD Operations</h2>
+        </div>
+        <div class="crud-selector">
+          <label>Collection</label>
+          <select id="crudCollection" class="input-select"></select>
+        </div>
+
+        <!-- CRUD Sub-tabs -->
+        <div class="sub-tabs">
+          <button class="sub-tab active" data-crud-tab="create"><i class="fas fa-plus"></i> Create</button>
+          <button class="sub-tab" data-crud-tab="read"><i class="fas fa-search"></i> Read</button>
+          <button class="sub-tab" data-crud-tab="update"><i class="fas fa-pen"></i> Update</button>
+          <button class="sub-tab" data-crud-tab="delete"><i class="fas fa-trash"></i> Delete</button>
+        </div>
+
+        <!-- Create -->
+        <div class="crud-panel active" id="crud-create">
+          <div class="card">
+            <h3>Insert New Document</h3>
+            <p class="field-hint">Enter a valid JSON object</p>
+            <textarea id="createJson" class="input-code" rows="10" placeholder='{ "name": "USS Example", "depth": 120, "year": 1945 }'></textarea>
+            <button class="btn-primary" onclick="crudCreate()"><i class="fas fa-plus-circle"></i> Insert Document</button>
+          </div>
+        </div>
+
+        <!-- Read -->
+        <div class="crud-panel" id="crud-read">
+          <div class="card">
+            <h3>Read Documents</h3>
+            <div class="row-flex">
+              <div class="flex-1">
+                <label>Filter (JSON, optional)</label>
+                <textarea id="readFilter" class="input-code" rows="3" placeholder='{ "country": "USA" }'></textarea>
+              </div>
+              <div class="flex-1">
+                <label>Sort (JSON, optional)</label>
+                <textarea id="readSort" class="input-code" rows="3" placeholder='{ "year": -1 }'></textarea>
+              </div>
+            </div>
+            <div class="row-flex" style="align-items:end;gap:12px;margin-top:8px">
+              <div>
+                <label>Limit</label>
+                <input type="number" id="readLimit" class="input-field" value="25" min="1" max="500">
+              </div>
+              <button class="btn-primary" onclick="crudRead(1)"><i class="fas fa-search"></i> Find</button>
+            </div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="table-header-row">
+              <span id="readCount"></span>
+              <div class="pagination" id="readPagination"></div>
+            </div>
+            <div class="table-wrap" id="readTable"></div>
+          </div>
+        </div>
+
+        <!-- Update -->
+        <div class="crud-panel" id="crud-update">
+          <div class="card">
+            <h3>Update Document by ID</h3>
+            <label>Document _id</label>
+            <input type="text" id="updateId" class="input-field" placeholder="e.g. 6612abc...">
+            <label style="margin-top:12px">Fields to Update (JSON)</label>
+            <textarea id="updateJson" class="input-code" rows="6" placeholder='{ "depth": 200, "verified": true }'></textarea>
+            <button class="btn-primary" onclick="crudUpdate()"><i class="fas fa-save"></i> Update Document</button>
+          </div>
+        </div>
+
+        <!-- Delete -->
+        <div class="crud-panel" id="crud-delete">
+          <div class="card">
+            <h3>Delete Document by ID</h3>
+            <label>Document _id</label>
+            <input type="text" id="deleteId" class="input-field" placeholder="e.g. 6612abc...">
+            <button class="btn-danger" onclick="crudDelete()" style="margin-top:12px"><i class="fas fa-trash-alt"></i> Delete Document</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── AGGREGATION ─── -->
+      <section id="sec-aggregation" class="content-section">
+        <div class="section-header">
+          <h2>Aggregation Pipelines</h2>
+        </div>
+        <div class="crud-selector">
+          <label>Collection</label>
+          <select id="aggCollection" class="input-select"></select>
+        </div>
+
+        <div class="preset-grid">
+          <div class="card preset-card" onclick="aggPreset('countByField')">
+            <i class="fas fa-hashtag"></i>
+            <h4>Count by Field</h4>
+            <p>Group and count documents by a specified field</p>
+          </div>
+          <div class="card preset-card" onclick="aggPreset('avgValue')">
+            <i class="fas fa-calculator"></i>
+            <h4>Average Values</h4>
+            <p>Compute avg, min, max for a numeric field</p>
+          </div>
+          <div class="card preset-card" onclick="aggPreset('groupByYear')">
+            <i class="fas fa-calendar"></i>
+            <h4>Group by Year</h4>
+            <p>Aggregate documents by year field</p>
+          </div>
+          <div class="card preset-card" onclick="aggPreset('topN')">
+            <i class="fas fa-trophy"></i>
+            <h4>Top N Documents</h4>
+            <p>Sort and limit to get top documents</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <h3>Custom Aggregation Pipeline</h3>
+          <textarea id="aggPipeline" class="input-code" rows="8" placeholder='[
+  { "$group": { "_id": "$country", "count": { "$sum": 1 } } },
+  { "$sort": { "count": -1 } },
+  { "$limit": 20 }
+]'></textarea>
+          <button class="btn-primary" onclick="runAggregation()"><i class="fas fa-play"></i> Execute Pipeline</button>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <h3>Results</h3>
+          <div class="table-wrap" id="aggTable"></div>
+        </div>
+      </section>
+
+      <!-- ─── GEOSPATIAL ─── -->
+      <section id="sec-geospatial" class="content-section">
+        <div class="section-header">
+          <h2>Geospatial Queries</h2>
+        </div>
+        <div class="crud-selector">
+          <label>Collection</label>
+          <select id="geoCollection" class="input-select"></select>
+        </div>
+        <div class="row-flex">
+          <div class="flex-1">
+            <label>Location Field Name</label>
+            <input type="text" id="geoField" class="input-field" value="location" placeholder="e.g. location, coordinates">
+          </div>
+        </div>
+
+        <div class="geo-controls">
+          <div class="row-flex">
+            <div class="flex-1">
+              <label>Latitude</label>
+              <input type="number" id="geoLat" class="input-field" value="27.1751" step="any">
+            </div>
+            <div class="flex-1">
+              <label>Longitude</label>
+              <input type="number" id="geoLng" class="input-field" value="-80.1234" step="any">
+            </div>
+            <div class="flex-1">
+              <label>Radius (km)</label>
+              <input type="number" id="geoRadius" class="input-field" value="500" min="0.1" step="any">
+            </div>
+          </div>
+          <div class="row-flex" style="margin-top:12px;gap:12px">
+            <button class="btn-primary" onclick="geoQuery('near')"><i class="fas fa-crosshairs"></i> $near Query</button>
+            <button class="btn-primary" onclick="geoQuery('within')"><i class="fas fa-draw-polygon"></i> $geoWithin Query</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <h3>Map View</h3>
+          <div id="mapContainer" style="height:420px;border-radius:8px;overflow:hidden"></div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <h3>Results <span id="geoResultCount"></span></h3>
+          <div class="table-wrap" id="geoTable"></div>
+        </div>
+      </section>
+
+      <!-- ─── OPTIMIZATION ─── -->
+      <section id="sec-optimization" class="content-section">
+        <div class="section-header">
+          <h2>Query Optimization</h2>
+        </div>
+        <div class="crud-selector">
+          <label>Collection</label>
+          <select id="optCollection" class="input-select"></select>
+        </div>
+
+        <div class="opt-grid">
+          <!-- Index Management -->
+          <div class="card">
+            <h3>Index Management</h3>
+            <div class="index-presets">
+              <div class="row-flex" style="gap:8px;margin-bottom:8px">
+                <input type="text" id="indexField" class="input-field" placeholder="Field name">
+                <select id="indexType" class="input-select" style="width:140px">
+                  <option value="1">Ascending (1)</option>
+                  <option value="-1">Descending (-1)</option>
+                  <option value="2dsphere">2dsphere</option>
+                  <option value="text">Text</option>
+                </select>
+              </div>
+              <button class="btn-primary btn-sm" onclick="createIndex()"><i class="fas fa-plus"></i> Create Index</button>
+              <button class="btn-ghost btn-sm" onclick="listIndexes()" style="margin-left:8px"><i class="fas fa-list"></i> List Indexes</button>
+            </div>
+            <div class="table-wrap" id="indexTable" style="margin-top:12px"></div>
+          </div>
+
+          <!-- Explain -->
+          <div class="card">
+            <h3>Query Execution Stats</h3>
+            <label>Query Filter (JSON)</label>
+            <textarea id="explainFilter" class="input-code" rows="4" placeholder='{ "country": "USA", "depth": { "$gt": 100 } }'></textarea>
+            <label style="margin-top:8px">Sort (JSON, optional)</label>
+            <textarea id="explainSort" class="input-code" rows="2" placeholder='{ "year": -1 }'></textarea>
+            <button class="btn-primary btn-sm" onclick="runExplain()"><i class="fas fa-microscope"></i> Run Explain</button>
+            <div id="explainResults" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── ADVANCED ─── -->
+      <section id="sec-advanced" class="content-section">
+        <div class="section-header">
+          <h2>Advanced Features</h2>
+        </div>
+
+        <div class="adv-grid">
+          <!-- Transaction Demo -->
+          <div class="card">
+            <h3>Transaction Demo</h3>
+            <p class="field-hint">Transactions require a replica set. If your MongoDB is a standalone instance, this will return an error.</p>
+            <div class="crud-selector" style="margin-bottom:12px">
+              <label>Collection</label>
+              <select id="txCollection" class="input-select"></select>
+            </div>
+            <label>Operation 1 — Insert</label>
+            <textarea id="txDoc1" class="input-code" rows="3" placeholder='{ "name": "TX Test 1", "temp": true }'></textarea>
+            <label style="margin-top:8px">Operation 2 — Insert</label>
+            <textarea id="txDoc2" class="input-code" rows="3" placeholder='{ "name": "TX Test 2", "temp": true }'></textarea>
+            <div class="row-flex" style="margin-top:12px;gap:8px">
+              <button class="btn-primary btn-sm" onclick="runTransaction('commit')"><i class="fas fa-check"></i> Commit</button>
+              <button class="btn-danger btn-sm" onclick="runTransaction('rollback')"><i class="fas fa-undo"></i> Rollback</button>
+            </div>
+            <div id="txLog" class="log-area"></div>
+          </div>
+
+          <!-- Concurrent Atomic Updates -->
+          <div class="card">
+            <h3>Concurrent Atomic Updates</h3>
+            <p class="field-hint">Simulates multiple simultaneous $inc operations to demonstrate atomicity.</p>
+            <div class="crud-selector" style="margin-bottom:12px">
+              <label>Collection</label>
+              <select id="concCollection" class="input-select"></select>
+            </div>
+            <label>Document _id</label>
+            <input type="text" id="concId" class="input-field" placeholder="Document ID to update">
+            <div class="row-flex" style="margin-top:8px;gap:12px">
+              <div class="flex-1">
+                <label>Field to Increment</label>
+                <input type="text" id="concField" class="input-field" placeholder="e.g. viewCount">
+              </div>
+              <div class="flex-1">
+                <label>Concurrent Requests</label>
+                <input type="number" id="concCount" class="input-field" value="10" min="1" max="100">
+              </div>
+            </div>
+            <button class="btn-primary btn-sm" style="margin-top:12px" onclick="runConcurrent()"><i class="fas fa-bolt"></i> Run Simulation</button>
+            <div id="concLog" class="log-area"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
