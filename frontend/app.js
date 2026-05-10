@@ -45,6 +45,17 @@ function getSelectedCollection(id) {
   return document.getElementById(id).value;
 }
 
+function validateMongoConnectionString(connectionString) {
+  const trimmed = (connectionString || "").trim();
+  if (!trimmed) {
+    return "Please enter a connection string.";
+  }
+  if (!/^mongodb(\+srv)?:\/\/.+/i.test(trimmed)) {
+    return "Invalid format. Use mongodb:// (local/Compass) or mongodb+srv:// (Atlas), same as MongoDB Compass.";
+  }
+  return "";
+}
+
 async function api(method, path, body = null) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
@@ -136,12 +147,14 @@ function fillCollectionSelects() {
 
 async function connectDB() {
   const input = document.getElementById("connStr");
+  const dbInput = document.getElementById("dbName");
   const errEl = document.getElementById("connError");
   const btn = document.getElementById("connectBtn");
   const connectionString = input.value.trim();
-
-  if (!connectionString) {
-    errEl.textContent = "Please enter a connection string.";
+  const dbName = (dbInput && dbInput.value ? dbInput.value : "").trim();
+  const validationError = validateMongoConnectionString(connectionString);
+  if (validationError) {
+    errEl.textContent = validationError;
     return;
   }
 
@@ -150,7 +163,7 @@ async function connectDB() {
   btn.innerHTML = "Connecting...";
 
   try {
-    const data = await api("POST", "/connect", { connectionString });
+    const data = await api("POST", "/connect", { connectionString, dbName });
     document.getElementById("connectionModal").style.display = "none";
     document.getElementById("app").classList.remove("hidden");
     document.getElementById("dbLabel").textContent = data.database;
@@ -158,8 +171,15 @@ async function connectDB() {
     await loadCollections();
     await loadDashboard();
     toast(`Connected to ${data.database}`);
+    if (!dbName && Array.isArray(data.availableDatabases) && data.availableDatabases.length > 1) {
+      toast(
+        `Multiple databases found (${data.availableDatabases.join(", ")}). Enter Database Name to open the exact dataset.`,
+        "warning"
+      );
+    }
   } catch (err) {
     errEl.textContent = err.message;
+    toast(err.message, "error");
   } finally {
     btn.disabled = false;
     btn.innerHTML = `<i class="fas fa-plug"></i> Connect to Database`;

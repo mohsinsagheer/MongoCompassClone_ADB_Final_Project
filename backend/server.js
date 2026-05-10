@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
+const dns = require("dns");
 const { MongoClient, ObjectId } = require("mongodb");
+const dnsPromises = dns.promises;
 
 const app = express();
 const PORT = 3000;
@@ -16,6 +18,9 @@ app.use(express.json());
 
 let client = null;
 let db = null;
+const CONNECTION_TIMEOUT_MS = 10000;
+const PUBLIC_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
+const SYSTEM_DATABASES = new Set(["admin", "local", "config"]);
 
 function ok(res, data) {
   return res.json({ success: true, data });
@@ -42,6 +47,182 @@ function getCollection(res, name) {
   return db.collection(name);
 }
 
+function isValidMongoUri(connectionString) {
+  return (
+    typeof connectionString === "string" &&
+    /^(mongodb(\+srv)?):\/\/.+/i.test(connectionString.trim())
+  );
+}
+
+function getDbNameFromConnectionString(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    const dbName = (parsed.pathname || "").replace(/^\//, "").trim();
+    return dbName || null;
+  } catch {
+    return null;
+  }
+}
+
+function mapMongoConnectionError(err) {
+  const message = (err && err.message ? err.message : "").toLowerCase();
+  const code = err && err.code;
+
+  if (message.includes("authentication failed")) {
+    return "MongoDB authentication failed. Verify username and password in your connection string.";
+  }
+
+  if (
+    message.includes("querysrv") ||
+    message.includes("ename") ||
+    message.includes("enotfound") ||
+    message.includes("dns")
+  ) {
+    return "DNS lookup failed for MongoDB Atlas cluster. Auto-retry via public DNS also failed. Check Atlas hostname, internet, VPN/proxy, or firewall.";
+  }
+
+  if (
+    message.includes("ssl") ||
+    message.includes("tls") ||
+    message.includes("certificate")
+  ) {
+    return "TLS/SSL handshake failed. Ensure your network allows secure Atlas connections and your system time is correct.";
+  }
+
+  if (
+    message.includes("server selection timed out") ||
+    message.includes("timed out") ||
+    code === "ETIMEDOUT"
+  ) {
+    return "Could not reach MongoDB server in time. For Atlas, verify Network Access (IP whitelist) and cluster status.";
+  }
+
+  if (message.includes("not authorized")) {
+    return "Connected, but user is not authorized for the selected database. Use a database your user can access.";
+  }
+
+  if (message.includes("invalid scheme")) {
+    return "Invalid connection string format. Use mongodb:// or mongodb+srv:// exactly like MongoDB Compass.";
+  }
+
+  if (!message) {
+    return "Failed to connect to MongoDB due to an unknown error.";
+  }
+
+  return err.message;
+}
+
+function isSrvConnection(connectionString) {
+  return /^mongodb\+srv:\/\//i.test((connectionString || "").trim());
+}
+
+function isDnsSrvError(err) {
+  const message = (err && err.message ? err.message : "").toLowerCase();
+  return (
+    message.includes("querysrv") ||
+    message.includes("dns") ||
+    message.includes("enotfound") ||
+    message.includes("eservfail") ||
+    message.includes("ename")
+  );
+}
+
+async function connectClient(connectionString) {
+  const nextClient = new MongoClient(connectionString.trim(), {
+    serverSelectionTimeoutMS: CONNECTION_TIMEOUT_MS
+  });
+  await nextClient.connect();
+  await nextClient.db("admin").command({ ping: 1 });
+  return nextClient;
+}
+
+function parseAtlasTxtOptions(txtRecords) {
+  const params = new URLSearchParams();
+  for (const record of txtRecords || []) {
+    const joined = Array.isArray(record) ? record.join("") : "";
+    if (!joined) continue;
+    for (const pair of joined.split("&")) {
+      const [k, v = ""] = pair.split("=");
+      if (k && !params.has(k)) params.set(k, v);
+    }
+  }
+  return params;
+}
+
+async function toStandardMongoUriFromSrv(connectionString) {
+  const parsed = new URL(connectionString);
+  const host = parsed.hostname;
+  if (!host) throw new Error("Invalid Atlas hostname in connection string.");
+
+  const srvName = `_mongodb._tcp.${host}`;
+  const srvRecords = await dnsPromises.resolveSrv(srvName);
+  if (!srvRecords || srvRecords.length === 0) {
+    throw new Error("Atlas SRV lookup returned no hosts.");
+  }
+
+  const hosts = srvRecords
+    .slice()
+    .sort((a, b) => a.priority - b.priority || b.weight - a.weight)
+    .map((record) => `${record.name}:${record.port}`)
+    .join(",");
+
+  const txtRecords = await dnsPromises.resolveTxt(host).catch(() => []);
+  const txtParams = parseAtlasTxtOptions(txtRecords);
+  const finalParams = new URLSearchParams(parsed.search || "");
+
+  for (const [key, value] of txtParams.entries()) {
+    if (!finalParams.has(key)) finalParams.set(key, value);
+  }
+  if (!finalParams.has("tls")) finalParams.set("tls", "true");
+
+  const username = parsed.username ? encodeURIComponent(parsed.username) : "";
+  const password = parsed.password ? encodeURIComponent(parsed.password) : "";
+  const auth =
+    username || password ? `${username}${password ? `:${password}` : ""}@` : "";
+  const dbPath = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "/";
+  const query = finalParams.toString();
+
+  return `mongodb://${auth}${hosts}${dbPath}${query ? `?${query}` : ""}`;
+}
+
+async function resolveDatabaseSelection(activeClient, explicitDbName, inferredDbName) {
+  const requested = (explicitDbName || inferredDbName || "").trim();
+  if (requested) {
+    return {
+      databaseName: requested,
+      availableDatabases: [],
+      source: explicitDbName ? "request" : "connectionString"
+    };
+  }
+
+  let allNames = [];
+  let filtered = [];
+  try {
+    const adminDb = activeClient.db("admin");
+    const listed = await adminDb.command({ listDatabases: 1, nameOnly: true });
+    allNames = (listed.databases || [])
+      .map((item) => item.name)
+      .filter((name) => typeof name === "string" && name.trim().length > 0);
+    filtered = allNames.filter((name) => !SYSTEM_DATABASES.has(name));
+  } catch (_err) {
+    return { databaseName: "test", availableDatabases: [], source: "fallbackTestNoListPermission" };
+  }
+
+  if (filtered.length === 1) {
+    return { databaseName: filtered[0], availableDatabases: filtered, source: "autoSingle" };
+  }
+
+  if (filtered.length > 1) {
+    throw new Error(
+      `Multiple databases found (${filtered.join(
+        ", "
+      )}). Please enter the exact Database Name to connect to your required dataset.`
+    );
+  }
+
+  return { databaseName: "test", availableDatabases: allNames, source: "fallbackTest" };
+}
+
 app.get("/api/test", (_req, res) => {
   ok(res, "API working");
 });
@@ -50,19 +231,54 @@ app.post("/api/connect", async (req, res) => {
   try {
     const { connectionString, dbName } = req.body || {};
     if (!connectionString) return fail(res, "Connection string required");
+    if (!isValidMongoUri(connectionString)) {
+      return fail(
+        res,
+        "Invalid MongoDB connection string. Use mongodb:// (local/Compass) or mongodb+srv:// (Atlas)."
+      );
+    }
 
     if (client) await client.close();
-    client = new MongoClient(connectionString.trim());
-    await client.connect();
 
-    db = dbName ? client.db(dbName) : client.db();
+    try {
+      client = await connectClient(connectionString);
+    } catch (err) {
+      if (!(isSrvConnection(connectionString) && isDnsSrvError(err))) {
+        throw err;
+      }
+
+      dns.setServers(PUBLIC_DNS_SERVERS);
+      try {
+        client = await connectClient(connectionString);
+      } catch (retryErr) {
+        if (!isDnsSrvError(retryErr)) throw retryErr;
+        const standardUri = await toStandardMongoUriFromSrv(connectionString);
+        client = await connectClient(standardUri);
+      }
+    }
+
+    const inferredDbName = getDbNameFromConnectionString(connectionString);
+    const selection = await resolveDatabaseSelection(client, dbName, inferredDbName);
+    const selectedDbName = selection.databaseName;
+    db = client.db(selectedDbName);
     const collections = await db.listCollections().toArray();
     ok(res, {
       database: db.databaseName,
-      collectionsCount: collections.length
+      collectionsCount: collections.length,
+      availableDatabases: selection.availableDatabases,
+      databaseSelectionSource: selection.source
     });
   } catch (err) {
-    fail(res, err.message || "Failed to connect");
+    if (client) {
+      try {
+        await client.close();
+      } catch (_closeErr) {
+        // ignore close errors after failed connect attempts
+      }
+    }
+    client = null;
+    db = null;
+    fail(res, mapMongoConnectionError(err));
   }
 });
 
@@ -91,12 +307,16 @@ app.get("/api/dashboard", async (_req, res) => {
   try {
     if (!ensureDb(res)) return;
     const collections = await db.listCollections().toArray();
+    const dataCollections = collections.filter((item) => item.type === "collection");
     const overview = [];
-    for (const item of collections) {
-      const collection = db.collection(item.name);
-      const count = await collection.estimatedDocumentCount();
-      overview.push({ name: item.name, count });
-    }
+    const counts = await Promise.all(
+      dataCollections.map(async (item) => {
+        const collection = db.collection(item.name);
+        const count = await collection.countDocuments({});
+        return { name: item.name, count };
+      })
+    );
+    overview.push(...counts);
     const docs = overview.reduce((sum, item) => sum + item.count, 0);
     ok(res, {
       database: db.databaseName,

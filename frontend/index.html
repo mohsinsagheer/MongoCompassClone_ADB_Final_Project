@@ -23,8 +23,10 @@
       </div>
       <div class="modal-body">
         <label for="connStr">MongoDB Connection String</label>
-        <input type="text" id="connStr" placeholder="mongodb://localhost:27017/shipwrecks" spellcheck="false" autocomplete="off">
-        <p class="input-hint">Use same string as in MongoDB Compass</p>
+        <input type="text" id="connStr" placeholder="mongodb://localhost:27017/shipwrecks or mongodb+srv://user:pass@cluster0.xxxx.mongodb.net/shipwrecks" spellcheck="false" autocomplete="off">
+        <label for="dbName" style="margin-top:10px">Database Name (optional)</label>
+        <input type="text" id="dbName" placeholder="e.g. shipwrecks" spellcheck="false" autocomplete="off">
+        <p class="input-hint">Use the same connection string format as MongoDB Compass for both local and Atlas databases.</p>
         <div id="connError" class="error-msg"></div>
         <button id="connectBtn" class="btn-primary btn-lg">
           <i class="fas fa-plug"></i> Connect to Database

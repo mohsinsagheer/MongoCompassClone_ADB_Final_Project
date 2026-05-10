@@ -127,10 +127,14 @@ body {
   background: var(--accent); color: #060d1b;
   border: none; border-radius: var(--radius-sm);
   font-family: var(--font); font-size: 0.88rem; font-weight: 600;
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-primary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 8px 22px rgba(0, 229, 160, 0.28);
+}
 .btn-primary:active { transform: translateY(0); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -142,10 +146,14 @@ body {
   background: var(--danger); color: #fff;
   border: none; border-radius: var(--radius-sm);
   font-family: var(--font); font-size: 0.88rem; font-weight: 600;
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
-.btn-danger:hover { filter: brightness(1.1); }
+.btn-danger:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 8px 22px rgba(229, 69, 69, 0.28);
+}
 
 .btn-ghost {
   display: inline-flex; align-items: center; gap: 6px;
@@ -153,10 +161,15 @@ body {
   background: transparent; color: var(--text-muted);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-family: var(--font); font-size: 0.82rem; font-weight: 500;
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.btn-ghost:hover { border-color: var(--text-muted); color: var(--text); }
+.btn-ghost:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
 
 .btn-sm { padding: 7px 14px; font-size: 0.8rem; }
 
@@ -268,6 +281,13 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px) scale(1.01);
+  border-color: var(--border-light);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
 }
 
 .card h3 {
@@ -357,10 +377,14 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
-  transition: border-color 0.3s;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 
-.stat-card:hover { border-color: var(--border-light); }
+.stat-card:hover {
+  border-color: var(--border-light);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+}
 
 .stat-card .stat-icon {
   width: 40px; height: 40px; border-radius: 10px;
